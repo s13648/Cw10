@@ -36,8 +36,9 @@ namespace Cw10.Controllers
         }
 
         [HttpDelete("{id}")]
-        public IActionResult DeleteStudent(int id)
+        public async Task<IActionResult> DeleteStudent([FromRoute] string id)
         {
+            await studentDbService.Delete(id);
             return Ok("Usuwanie ukończone");
         }
     }

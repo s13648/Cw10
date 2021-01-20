@@ -16,5 +16,6 @@ namespace Cw10.Services
         
         Task<StudentDto> GetByIndex(string index);
         Task Update(StudentDto studentDto, string indexNumber);
+        Task Delete(string id);
     }
 }

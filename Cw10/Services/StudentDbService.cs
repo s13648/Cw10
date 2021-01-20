@@ -135,5 +135,12 @@ namespace Cw10.Services
             
             await context.SaveChangesAsync();
         }
+
+        public async Task Delete(string id)
+        {
+            var student = await context.Students.FirstOrDefaultAsync(n => n.IndexNumber == id);
+            context.Remove(student);
+            await context.SaveChangesAsync();
+        }
     }
 }
