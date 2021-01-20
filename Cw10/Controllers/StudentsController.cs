@@ -23,9 +23,9 @@ namespace Cw10.Controllers
         }
 
         [HttpPost]
-        public IActionResult CreateStudent(Student student)
+        public IActionResult CreateStudent(StudentDto studentDto)
         {
-            return Ok(student);
+            return Ok(studentDto);
         }
 
         [HttpPut("{id}")]

@@ -4,6 +4,8 @@ using System.Data;
 using System.Data.SqlClient;
 using System.Threading.Tasks;
 using Cw10.Dto;
+using Cw10.Model;
+using Microsoft.EntityFrameworkCore;
 
 namespace Cw10.Services
 {
@@ -56,34 +58,17 @@ namespace Cw10.Services
 
 
         private readonly IConfig config;
+        private readonly APBDContext context;
 
-        public StudentDbService(IConfig config)
+        public StudentDbService(IConfig config,APBDContext context)
         {
             this.config = config;
+            this.context = context;
         }
 
-        public async Task<IEnumerable<Student>> GetStudents()
+        public async Task<IList<Student>> GetStudents()
         {
-            await using var sqlConnection = new SqlConnection(config.ConnectionString);
-            await using var command = new SqlCommand(GetStudentsSql,sqlConnection) {CommandType = CommandType.Text};
-            await sqlConnection.OpenAsync();
-
-            await using var sqlDataReader = await command.ExecuteReaderAsync();
-            var students = new List<Student>();
-            while (await sqlDataReader.ReadAsync())
-            {
-                var student = new Student
-                {
-                    BirthDate = DateTime.Parse(sqlDataReader[nameof(Student.BirthDate)]?.ToString()),
-                    FirstName = sqlDataReader[nameof(Student.FirstName)].ToString(),
-                    LastName = sqlDataReader[nameof(Student.LastName)].ToString(),
-                    Semester = int.Parse(sqlDataReader[nameof(Student.Semester)].ToString()),
-                    StudyName = sqlDataReader[nameof(Student.StudyName)].ToString()
-                };
-                students.Add(student);
-            }
-
-            return students;
+            return await context.Students.ToListAsync();
         }
 
         public async Task<bool> Exists(string indexNumber)
@@ -116,7 +101,7 @@ namespace Cw10.Services
             await command.ExecuteNonQueryAsync();
         }
 
-        public async Task<Student> GetByIndex(string index)
+        public async Task<StudentDto> GetByIndex(string index)
         {
             await using var sqlConnection = new SqlConnection(config.ConnectionString);
             await using var command = new SqlCommand(GetByIndexQuery, sqlConnection) { CommandType = CommandType.Text };
@@ -127,13 +112,13 @@ namespace Cw10.Services
             await using var sqlDataReader = await command.ExecuteReaderAsync();
             while (await sqlDataReader.ReadAsync())
             {
-                return new Student
+                return new StudentDto
                 {
-                    BirthDate = DateTime.Parse(sqlDataReader[nameof(Student.BirthDate)]?.ToString()),
-                    FirstName = sqlDataReader[nameof(Student.FirstName)].ToString(),
-                    LastName = sqlDataReader[nameof(Student.LastName)].ToString(),
-                    Semester = int.Parse(sqlDataReader[nameof(Student.Semester)].ToString()),
-                    StudyName = sqlDataReader[nameof(Student.StudyName)].ToString()
+                    BirthDate = DateTime.Parse(sqlDataReader[nameof(StudentDto.BirthDate)]?.ToString()),
+                    FirstName = sqlDataReader[nameof(StudentDto.FirstName)].ToString(),
+                    LastName = sqlDataReader[nameof(StudentDto.LastName)].ToString(),
+                    Semester = int.Parse(sqlDataReader[nameof(StudentDto.Semester)].ToString()),
+                    StudyName = sqlDataReader[nameof(StudentDto.StudyName)].ToString()
                 };
             }
 

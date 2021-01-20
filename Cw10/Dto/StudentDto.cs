@@ -2,7 +2,7 @@
 
 namespace Cw10.Dto
 {
-    public class Student
+    public class StudentDto
     {
         public string FirstName { get; set; }
         
