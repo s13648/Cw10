@@ -1,43 +1,30 @@
-﻿using System.Data;
-using System.Data.SqlClient;
+﻿using System.Linq;
 using System.Threading.Tasks;
 using Cw10.Dto;
+using Cw10.Model;
+using Microsoft.EntityFrameworkCore;
 
 namespace Cw10.Services
 {
     public class StudyDbService : IStudyDbService
     {
-        private readonly IConfig config;
+        private readonly APBDContext context;
 
-        private const string GetByNameQuery = @"SELECT 
-	                        S.IdStudy,
-	                        S.[Name]
-                        FROM [Studies] AS S
-                        WHERE S.[Name] = @Name
-                        ";
-        public StudyDbService(IConfig config)
+        public StudyDbService(APBDContext context)
         {
-            this.config = config;
+            this.context = context;
         }
 
-        public async Task<Study> GetByName(string modelStudies)
+        public async Task<StudyDto> GetByName(string name)
         {
-            await using var sqlConnection = new SqlConnection(config.ConnectionString);
-            await using var command = new SqlCommand(GetByNameQuery, sqlConnection) { CommandType = CommandType.Text };
-            command.Parameters.AddWithValue("Name", modelStudies);
-            await sqlConnection.OpenAsync();
-
-            await using var sqlDataReader = await command.ExecuteReaderAsync();
-            while (await sqlDataReader.ReadAsync())
-            {
-                return new Study
+            return await context.Studies
+                .Where(n => n.Name == name)
+                .Select(n => new StudyDto
                 {
-                    IdStudy = int.Parse(sqlDataReader[nameof(Study.IdStudy)]?.ToString()),
-                    Name = sqlDataReader[nameof(Study.Name)].ToString()
-                };
-            }
-
-            return null;
+                    Name = n.Name,
+                    IdStudy = n.IdStudy
+                })
+                .FirstOrDefaultAsync();
         }
     }
 }

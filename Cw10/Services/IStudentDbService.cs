@@ -9,12 +9,8 @@ namespace Cw10.Services
     public interface IStudentDbService
     {
         public Task<IList<Student>> GetStudents();
-
         Task<bool> Exists(string indexNumber);
-        
-        Task Create(EnrollStudent model, SqlTransaction sqlTransaction, int idEnrollment);
-        
-        Task<StudentDto> GetByIndex(string index);
+        Task Create(EnrollStudent model,  int idEnrollment);
         Task Update(StudentDto studentDto, string indexNumber);
         Task Delete(string id);
     }

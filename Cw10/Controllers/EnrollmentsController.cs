@@ -28,7 +28,7 @@ namespace Cw10.Controllers
                 return BadRequest($"Study with name: {model.Studies} not found");
 
             if (await studentDbService.Exists(model.IndexNumber))
-                return BadRequest($"Student with index: {model.Studies} already exists");
+                return BadRequest($"Student with index: {model.IndexNumber} already exists");
 
             var enrollment = await enrollmentDbService.EnrollStudent(model,study);
 
@@ -40,8 +40,7 @@ namespace Cw10.Controllers
         {
             if (!await enrollmentDbService.Exists(promotions.Studies, promotions.Semester))
                 return BadRequest("Promotion not found");
-
-
+            
             await enrollmentDbService.Promotions(promotions);
 
             return StatusCode(201, await enrollmentDbService.GetBy(promotions.Studies, promotions.Semester + 1));

@@ -1,78 +1,39 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
+using System.Linq;
 using System.Threading.Tasks;
 using Cw10.Dto;
+using Cw10.Model;
+using Microsoft.EntityFrameworkCore;
 
 namespace Cw10.Services
 {
     public class EnrollmentDbService : IEnrollmentDbService
     {
-        private readonly IConfig config;
+        private readonly IStudyDbService studyDbService;
         private readonly IStudentDbService studentDbService;
+        private readonly APBDContext context;
 
-        private const string ExistsByStudyAndSemesterQuery = @"SELECT TOP 1 1
-                                                        FROM 
-	                                                        [Studies] AS S JOIN
-	                                                        [Enrollment] AS E ON E.IdStudy = S.IdStudy
-                                                        WHERE
-	                                                        S.[Name] = @Studies AND E.Semester = @Semester";
-
-        private const string GetByStudyAndSemesterQuery = @"SELECT *
-                                                        FROM 
-	                                                        [Studies] AS S JOIN
-	                                                        [Enrollment] AS E ON E.IdStudy = S.IdStudy
-                                                        WHERE
-	                                                        S.[Name] = @Studies AND E.Semester = @Semester";
-
-        private const string GetActualEnrollment = @"SELECT TOP 1 
-	                                    E.IdEnrollment
-                                    FROM
-	                                    [Studies] AS S JOIN
-	                                    [Enrollment] AS E ON E.IdStudy = S.IdStudy
-                                    WHERE E.Semester = 1 AND S.[Name] = @StudyName
-                                    ORDER BY E.StartDate DESC";
-
-        private const string InsertEnrollment = @"
-                                    INSERT INTO [Enrollment]
-                                               (
-                                               [IdEnrollment]
-                                               ,[Semester]
-                                               ,[IdStudy]
-                                               ,[StartDate])
-                                         VALUES
-                                               (
-                                                @IdEnrollment
-                                                ,1
-                                               ,@IdStudy
-                                               ,GETDATE());";
-
-        private const string GetEnrollmentLastId = @"SELECT TOP 1 E.IdEnrollment
-                            FROM [Enrollment] AS E
-                            ORDER BY E.IdEnrollment DESC";
-
-        private const string GetByIdQuery = @"SELECT E.*
-                                    FROM [Enrollment] AS E
-                                    WHERE E.IdEnrollment = @IdEnrollment";
-
-        public EnrollmentDbService(IConfig config, IStudentDbService studentDbService)
+        public EnrollmentDbService(
+            IStudyDbService studyDbService,
+            IStudentDbService studentDbService,
+            APBDContext context)
         {
-            this.config = config;
+            this.studyDbService = studyDbService;
             this.studentDbService = studentDbService;
+            this.context = context;
         }
 
-        public async Task<Enrollment> EnrollStudent(EnrollStudent model, Study study)
+        public async Task<EnrollmentDto> EnrollStudent(EnrollStudent model, StudyDto studyDto)
         {
-            await using var sqlConnection = new SqlConnection(config.ConnectionString);
-            await sqlConnection.OpenAsync();
-            var transaction = (SqlTransaction) await sqlConnection.BeginTransactionAsync();
+            var transaction = await context.Database.BeginTransactionAsync();
             
             try
             {
-                var actualEnrollmentId = await ActualEnrollmentGetByName(transaction, model.Studies) 
-                                         ?? await ActualEnrollmentCreate(transaction,study);
-
-                await studentDbService.Create(model, transaction, actualEnrollmentId);;
+                var actualEnrollmentId = await ActualEnrollmentGetByName(model.Studies) ?? await EnrollmentCreate(studyDto.IdStudy);
+                await studentDbService.Create(model,  actualEnrollmentId);;
 
                 await transaction.CommitAsync();
                 return await GetById(actualEnrollmentId);
@@ -86,128 +47,89 @@ namespace Cw10.Services
 
         public async Task Promotions(Promotions promotions)
         {
-            await using var sqlConnection = new SqlConnection(config.ConnectionString);
+            var newSemester = promotions.Semester + 1;
+            var enrollmentDto = await GetBy(promotions.Studies, newSemester);
+            int enrollmentId;
+            if (enrollmentDto == null)
+            {
+                var studyDto = await studyDbService.GetByName(promotions.Studies);
+                enrollmentId = await EnrollmentCreate(studyDto.IdStudy, newSemester);
+            }
+            else
+                enrollmentId = enrollmentDto.IdEnrollment;
 
-            await using var command = new SqlCommand("Enrollment_Promotions", sqlConnection) { CommandType = CommandType.StoredProcedure };
-            command.Parameters.AddWithValue("Studies", promotions.Studies);
-            command.Parameters.AddWithValue("Semester", promotions.Semester);
+            var students = await GetStudentsBy(promotions.Studies, promotions.Semester);
+            foreach (var student in students)
+            {
+                student.IdEnrollment = enrollmentId;
+            }
 
-            await sqlConnection.OpenAsync();
-
-            await command.ExecuteNonQueryAsync();
+            await context.SaveChangesAsync();
         }
 
-        public async Task<Enrollment> GetBy(string studies,int semester)
+        public async Task<EnrollmentDto> GetBy(string studies,int semester)
         {
-            await using var sqlConnection = new SqlConnection(config.ConnectionString);
+            return await context.Enrollments
+                    .Where(n => n.IdStudyNavigation.Name == studies && n.Semester == semester)
+                    .Select(n => new EnrollmentDto
+                    {
+                        Semester = n.Semester.ToString(),
+                        IdEnrollment = n.IdEnrollment,
+                        IdStudy = n.IdStudy,
+                        StartDate = n.StartDate
+                    }).FirstOrDefaultAsync();
+        }
+        
+        private async Task<IList<Student>> GetStudentsBy(string studies,int semester)
+        {
+            return await context.Enrollments
+                .Where(n => n.IdStudyNavigation.Name == studies && n.Semester == semester)
+                .Include(n => n.Students)
+                .SelectMany(n => n.Students)
+                .ToListAsync();
+        }
 
-            await using var command = new SqlCommand(GetByStudyAndSemesterQuery, sqlConnection) { CommandType = CommandType.Text };
-            command.Parameters.AddWithValue("Studies", studies);
-            command.Parameters.AddWithValue("Semester", semester);
-
-            await sqlConnection.OpenAsync();
-
-            await using var sqlDataReader = await command.ExecuteReaderAsync();
-            while (await sqlDataReader.ReadAsync())
-            {
-                var enrollment = new Enrollment
+        private async Task<EnrollmentDto> GetById(int id)
+        {
+            return await context.Enrollments.Where(n => n.IdEnrollment == id)
+                .Select(n => new EnrollmentDto
                 {
-                    StartDate = DateTime.Parse(sqlDataReader[nameof(Enrollment.StartDate)]?.ToString()),
-                    Semester = sqlDataReader[nameof(Enrollment.Semester)].ToString(),
-                    IdStudy = int.Parse(sqlDataReader[nameof(Enrollment.IdStudy)].ToString()),
-                    IdEnrollment = int.Parse(sqlDataReader[nameof(Enrollment.IdEnrollment)].ToString())
-                };
-                return enrollment;
-            }
-
-            return null;
+                    Semester = n.Semester.ToString(),
+                    IdEnrollment = n.IdEnrollment,
+                    IdStudy = n.IdStudy,
+                    StartDate = n.StartDate
+                })
+                .FirstOrDefaultAsync();
         }
-
-        private async Task<Enrollment> GetById(int id)
+        
+        private async Task<int> EnrollmentCreate(int idStudy,int semester = 1)
         {
-            await using var sqlConnection = new SqlConnection(config.ConnectionString);
-            await using var command = new SqlCommand(GetByIdQuery, sqlConnection) { CommandType = CommandType.Text };
-            command.Parameters.AddWithValue("@IdEnrollment", id);
-            await sqlConnection.OpenAsync();
-
-            await using var sqlDataReader = await command.ExecuteReaderAsync();
-            while (await sqlDataReader.ReadAsync())
+            var maxId = context.Enrollments.Max(n => n.IdEnrollment);
+            
+            var newEnrollment = new Enrollment
             {
-                var enrollment = new Enrollment
-                {
-                    StartDate = DateTime.Parse(sqlDataReader[nameof(Enrollment.StartDate)]?.ToString()),
-                    Semester = sqlDataReader[nameof(Enrollment.Semester)].ToString(),
-                    IdStudy = int.Parse(sqlDataReader[nameof(Enrollment.IdStudy)].ToString()),
-                    IdEnrollment = int.Parse(sqlDataReader[nameof(Enrollment.IdEnrollment)].ToString())
-                };
-                return enrollment;
-            }
-
-            return null;
-        }
-
-        private async Task<int> ActualEnrollmentCreate(SqlTransaction sqlTransaction, Study study)
-        {
-            var lastId = await GetLastId(sqlTransaction);
-            await using var command = new SqlCommand(InsertEnrollment, sqlTransaction.Connection)
-            {
-                CommandType = CommandType.Text,
-                Transaction = sqlTransaction
+                IdEnrollment = maxId + 1,
+                Semester = semester,
+                StartDate = DateTime.Now,
+                IdStudy = idStudy
             };
-
-            command.Parameters.AddWithValue("@IdEnrollment", lastId + 1);
-            command.Parameters.AddWithValue("@IdStudy", study.IdStudy);
-            await command.ExecuteNonQueryAsync();
-            return await GetLastId(sqlTransaction);
+            await context.Enrollments.AddAsync(newEnrollment);
+            await context.SaveChangesAsync();
+            return newEnrollment.IdEnrollment;
         }
-
-        private async Task<int?> ActualEnrollmentGetByName(SqlTransaction sqlTransaction, string studyName)
+        
+        private async Task<int?> ActualEnrollmentGetByName(string studyName)
         {
-            await using var command = new SqlCommand(GetActualEnrollment, sqlTransaction.Connection)
-            {
-                CommandType = CommandType.Text,
-                Transaction = sqlTransaction
-            };
-            command.Parameters.AddWithValue("StudyName", studyName);
-
-            await using var sqlDataReader = await command.ExecuteReaderAsync();
-            while (await sqlDataReader.ReadAsync())
-            {
-                return int.Parse(sqlDataReader["IdEnrollment"].ToString());
-            }
-
-            return null;
-        }
-
-        private async Task<int> GetLastId(SqlTransaction sqlTransaction)
-        {
-            await using var command = new SqlCommand(GetEnrollmentLastId, sqlTransaction.Connection)
-            {
-                CommandType = CommandType.Text,
-                Transaction = sqlTransaction
-            };
-
-            await using var sqlDataReader = await command.ExecuteReaderAsync();
-            while (await sqlDataReader.ReadAsync())
-            {
-                return int.Parse(sqlDataReader["IdEnrollment"].ToString());
-            }
-
-            return 0;
+            return await context
+                .Enrollments
+                .Where(e => e.IdStudyNavigation.Name == studyName && e.Semester == 1)
+                .Select(e => (int?)e.IdEnrollment)
+                .FirstOrDefaultAsync();
         }
 
         public async Task<bool> Exists(string studies,int semester)
         {
-            await using var sqlConnection = new SqlConnection(config.ConnectionString);
-
-            await using var command = new SqlCommand(ExistsByStudyAndSemesterQuery, sqlConnection) { CommandType = CommandType.Text };
-            command.Parameters.AddWithValue("Studies", studies);
-            command.Parameters.AddWithValue("Semester", semester);
-
-            await sqlConnection.OpenAsync();
-
-            await using var sqlDataReader = await command.ExecuteReaderAsync();
-            return await sqlDataReader.ReadAsync();
+            return await context.Enrollments.AnyAsync(n => n.IdStudyNavigation.Name == studies && n.Semester == semester);
         }
     }
 }

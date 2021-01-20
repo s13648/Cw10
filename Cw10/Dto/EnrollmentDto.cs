@@ -2,7 +2,7 @@
 
 namespace Cw10.Dto
 {
-    public class Enrollment
+    public class EnrollmentDto
     {
         public DateTime StartDate { get; set; }
         public string Semester { get; set; }
