@@ -10,8 +10,5 @@ namespace Cw10.Dto
         
         public DateTime BirthDate { get; set; }
         
-        public string StudyName { get; set; }
-        
-        public int Semester { get; set; }
     }
 }

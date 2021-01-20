@@ -117,12 +117,23 @@ namespace Cw10.Services
                     BirthDate = DateTime.Parse(sqlDataReader[nameof(StudentDto.BirthDate)]?.ToString()),
                     FirstName = sqlDataReader[nameof(StudentDto.FirstName)].ToString(),
                     LastName = sqlDataReader[nameof(StudentDto.LastName)].ToString(),
-                    Semester = int.Parse(sqlDataReader[nameof(StudentDto.Semester)].ToString()),
-                    StudyName = sqlDataReader[nameof(StudentDto.StudyName)].ToString()
+                    // Semester = int.Parse(sqlDataReader[nameof(StudentDto.Semester)].ToString()),
+                    // StudyName = sqlDataReader[nameof(StudentDto.StudyName)].ToString()
                 };
             }
 
             return null;
+        }
+
+        public async Task Update(StudentDto studentDto, string indexNumber)
+        {
+            var student = await context.Students.FirstOrDefaultAsync(n => n.IndexNumber == indexNumber);
+            
+            student.LastName = studentDto.LastName;
+            student.FirstName = studentDto.FirstName;
+            student.BirthDate = studentDto.BirthDate;
+            
+            await context.SaveChangesAsync();
         }
     }
 }

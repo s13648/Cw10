@@ -15,5 +15,6 @@ namespace Cw10.Services
         Task Create(EnrollStudent model, SqlTransaction sqlTransaction, int idEnrollment);
         
         Task<StudentDto> GetByIndex(string index);
+        Task Update(StudentDto studentDto, string indexNumber);
     }
 }

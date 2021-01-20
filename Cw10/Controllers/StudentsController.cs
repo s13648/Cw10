@@ -28,9 +28,10 @@ namespace Cw10.Controllers
             return Ok(studentDto);
         }
 
-        [HttpPut("{id}")]
-        public IActionResult PutStudent(int id)
+        [HttpPatch("{id}")]
+        public async Task<IActionResult> PutStudent([FromRoute] string id, StudentDto studentDto)
         {
+            await studentDbService.Update(studentDto,id);
             return Ok("Ąktualizacja dokończona");
         }
 
